@@ -4,6 +4,9 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+# Constants
+VALID_CAPACITIES = {"low", "medium", "high"}
+
 
 @app.route("/")
 def working():
@@ -15,31 +18,74 @@ def submit():
     if request.method == "POST":
         try:
             data = request.json
+
+            # Extract data
             device_id = data["id"]
             lat = data["data"]["lat"]
             lng = data["data"]["lng"]
-            try:
-                name = data["data"]["name"]
-            except:
-                name = "Vehicle"
+            name = data["data"].get("name", "Vehicle")
+            capacity = data["data"].get("capacity", "low")
+            speed = data["data"].get("speed", 0)
 
+            # Validate data format
+            if not (
+                isinstance(device_id, str)
+                and isinstance(lat, (int, float))
+                and isinstance(lng, (int, float))
+            ):
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid data format. 'id' must be a string, 'lat' and 'lng' must be numbers"
+                        }
+                    ),
+                    400,
+                )
+
+            # Validate capacity field
+            if capacity.lower() not in VALID_CAPACITIES:
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid capacity value. Must be 'low', 'medium', or 'high'."
+                        }
+                    ),
+                    400,
+                )
+
+            # Validate speed field
+            if not isinstance(speed, int) or speed < 0:
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid speed value. Must be a non-negative integer."
+                        }
+                    ),
+                    400,
+                )
+
+            # Prepare response data
             response_data = {
                 "id": device_id,
                 "lat": lat,
                 "lng": lng,
                 "name": name,
+                "capacity": capacity,
+                "speed": speed,
             }
-
-            # Validate input
-            if not device_id or not lat or not lng:
-                return jsonify({"error": "Invalid input data"}), 400
 
             # Make PUT request
             put_url = f"https://vehicle-ts-default-rtdb.firebaseio.com/{device_id}.json"
-            put_data = {"lat": lat, "lng": lng, "name": name}
+            put_data = {
+                "lat": lat,
+                "lng": lng,
+                "name": name,
+                "capacity": capacity,
+                "speed": speed,
+            }
             response = requests.put(put_url, json=put_data)
 
-            if response.status_code == 200:
+            if response.ok:
                 return jsonify(response_data)
             else:
                 return (
@@ -48,8 +94,10 @@ def submit():
                     ),
                     500,
                 )
+
         except Exception as e:
-            return jsonify({"error": f"Invalid JSON format - {str(e)}"}), 400
+            return jsonify({"error": f"Invalid request - {str(e)}"}), 400
+
     else:
         return "Invalid request method"
 
